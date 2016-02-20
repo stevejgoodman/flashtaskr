@@ -1,25 +1,44 @@
 #import sqlite3
 from functools import wraps
-
+from datetime import datetime
 from flask import Flask, flash, redirect, render_template, request, \
-    session, url_for, g
-from forms import AddTaskForm
+    session, url_for
+from forms import AddTaskForm, LoginForm, RegisterForm
 from flask_sqlalchemy import SQLAlchemy
 
-
+# Config
 app = Flask(__name__)
 app.config.from_object('_config')
 db = SQLAlchemy(app)
 
 # *** I don't like this - line has to be after db =SQL.. otherwise fails!!!
-from models import Task
-
-
+from models import Task, User
 
 
 # helper functions
 # def connect_db():
 #   return sqlite3.connect(app.config['DATABASE_PATH'])
+
+
+@app.route('/register/', methods=['GET', 'POST'])
+def register():
+    error = None
+    form = RegisterForm(request.form)
+    if request.method == 'POST':
+        if form.validate_on_submit():
+            print "processes validatied on submit"
+            new_user = User(
+                form.name.data,
+                form.email.data,
+                form.password.data,
+            )
+            db.session.add(new_user)
+            db.session.commit()
+            flash('thanks for registering. Now log in')
+            return redirect(url_for('login'))
+        else:
+            flash('cant validate input')
+    return render_template('register.html', form=form, error=error)
 
 
 def login_required(test):
@@ -33,27 +52,44 @@ def login_required(test):
     return wrap
 
 
-#route handlers
+# route handlers
 @app.route('/logout/')
 def logout():
     session.pop('logged_in', None)
+    session.pop('user_id', None)
     flash('Goodbye')
     return redirect(url_for('login'))
 
 
+# def login():
+#     error = None
+#     if request.method == 'POST':
+#         if request.form['username'] != app.config['USERNAME'] \
+#             or request.form['password'] != app.config['PASSWORD']:
+#             error = 'Invalid credentials. Try again'
+#             return render_template('login.html', error=error)
+#         else:
+#             session['logged_in'] = True
+#             flash('Welcome')
+#             return redirect(url_for('tasks'))
+#     return render_template('login.html')
 @app.route('/', methods=['GET', 'POST'])
 def login():
     error = None
+    form = LoginForm(request.form)
     if request.method == 'POST':
-        if request.form['username'] != app.config['USERNAME'] \
-            or request.form['password'] != app.config['PASSWORD']:
-            error = 'Invalid credentials. Try again'
-            return render_template('login.html', error=error)
+        if form.validate_on_submit():
+            user = User.query.filter_by(name=request.form['name']).first()
+            if user is not None and user.password == request.form['password']:
+                session['logged_in'] = True
+                session['user_id'] = user.id
+                flash('Welcome')
+                return redirect(url_for('tasks'))
+            else:
+                error = 'Invalid login credentials'
         else:
-            session['logged_in'] = True
-            flash('Welcome')
-            return redirect(url_for('tasks'))
-    return render_template('login.html')
+            error = 'Both fields are required'
+    return render_template('login.html', form=form, error=error)
 
 
 @app.route('/tasks/')
@@ -112,20 +148,22 @@ def new_task():
     if request.method == 'POST':
         print 'here'
         if form.validate_on_submit():
-            print 'orhere'
             new_task = Task(
                 form.name.data,
                 form.due_date.data,
                 form.priority.data,
-                '1'
+                datetime.utcnow(),
+                '1',
+                session['user_id']
             )
             db.session.add(new_task)
             db.session.commit()
             flash('New entry successfully posted')
+            return redirect(url_for('tasks'))
         else:
             flash('Invalid entry')
         return redirect(url_for('tasks'))
-
+    return render_template('tasks.html', form=form)
 
 # Mark tests as complete
 @app.route('/complete/<int:task_id>/')
