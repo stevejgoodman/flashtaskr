@@ -106,3 +106,9 @@ h2{
     text-decoration:none;
     position:relative;
 }
+.error {
+    colour: red;
+    font-size: .8em;
+    background-color: #FFFFFF;
+}
+

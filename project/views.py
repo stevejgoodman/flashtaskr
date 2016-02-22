@@ -5,6 +5,7 @@ from flask import Flask, flash, redirect, render_template, request, \
     session, url_for
 from forms import AddTaskForm, LoginForm, RegisterForm
 from flask_sqlalchemy import SQLAlchemy
+from sqlalchemy.exc import IntegrityError
 
 # Config
 app = Flask(__name__)
@@ -19,6 +20,19 @@ from models import Task, User
 # def connect_db():
 #   return sqlite3.connect(app.config['DATABASE_PATH'])
 
+def flash_errors(form):
+    for field, errors in form.errors.items():
+        for error in errors:
+            flash(u"Error in the %s field - %s" %(getattr(form, field).label.text, error), 'error')
+
+
+def open_tasks():
+    return db.session.query(Task).filter_by(status='1').order_by(Task.due_date.asc())
+
+
+def closed_tasks():
+    return db.session.query(Task).filter_by(status='0').order_by(Task.due_date.asc())
+
 
 @app.route('/register/', methods=['GET', 'POST'])
 def register():
@@ -32,12 +46,14 @@ def register():
                 form.email.data,
                 form.password.data,
             )
-            db.session.add(new_user)
-            db.session.commit()
-            flash('thanks for registering. Now log in')
-            return redirect(url_for('login'))
-        else:
-            flash('cant validate input')
+            try:
+                db.session.add(new_user)
+                db.session.commit()
+                flash('thanks for registering. Now log in')
+                return redirect(url_for('login'))
+            except IntegrityError:
+                error = "User already exists with that name"
+                return render_template('register.html', form=form, error=error)
     return render_template('register.html', form=form, error=error)
 
 
@@ -54,6 +70,7 @@ def login_required(test):
 
 # route handlers
 @app.route('/logout/')
+@login_required
 def logout():
     session.pop('logged_in', None)
     session.pop('user_id', None)
@@ -107,16 +124,17 @@ def tasks():
     # g.db.close()
 
     # this is the object oriented way way with an ORM
-    open_tasks = db.session.query(Task)\
-        .filter_by(status='1').order_by(Task.due_date.asc())
-    closed_tasks = db.session.query(Task)\
-        .filter_by(status='0').order_by(Task.due_date.asc())
+    
+    # open_tasks = db.session.query(Task)\
+    #     .filter_by(status='1').order_by(Task.due_date.asc())
+    # closed_tasks = db.session.query(Task)\
+    #     .filter_by(status='0').order_by(Task.due_date.asc())
 
     return render_template(
         'tasks.html',
         form=AddTaskForm(request.form),
-        open_tasks=open_tasks,
-        closed_tasks=closed_tasks
+        open_tasks=open_tasks(),
+        closed_tasks=closed_tasks()
     )
 
 
@@ -143,10 +161,9 @@ def new_task():
     #     g.db.close()
     #     flash('New entry successfully posted.')
     #     return redirect(url_for('tasks'))
-
+    error = None
     form = AddTaskForm(request.form)
     if request.method == 'POST':
-        print 'here'
         if form.validate_on_submit():
             new_task = Task(
                 form.name.data,
@@ -160,10 +177,12 @@ def new_task():
             db.session.commit()
             flash('New entry successfully posted')
             return redirect(url_for('tasks'))
-        else:
-            flash('Invalid entry')
-        return redirect(url_for('tasks'))
-    return render_template('tasks.html', form=form)
+    return render_template(
+        'tasks.html',
+        form=form,
+        error=error,
+        open_tasks=open_tasks(),
+        closed_tasks=closed_tasks())
 
 # Mark tests as complete
 @app.route('/complete/<int:task_id>/')
