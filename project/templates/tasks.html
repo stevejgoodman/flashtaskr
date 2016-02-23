@@ -60,14 +60,18 @@
       </thead>
       {% for task in open_tasks %}
         <tr>
-          <td width="200px">{{ task.name }}</td>
-          <td width="75px">{{ task.due_date }}</td>
-          <td width="100px">{{ task.posted_date }}</td>
-          <td width="50px">{{ task.priority }}</td>
-          <td width="90px">{{ task.poster.name }}</td>
+          <td>{{ task.name }}</td>
+          <td>{{ task.due_date }}</td>
+          <td>{{ task.posted_date }}</td>
+          <td>{{ task.priority }}</td>
+          <td>{{ task.poster.name }}</td>
           <td>
-            <a href="{{ url_for('delete_entry', task_id = task.task_id) }}">Delete</a>  -
-            <a href="{{ url_for('complete', task_id = task.task_id) }}">Mark as Complete</a>
+            {% if task.poster.name == session.name or session.role == "admin" %}
+              <a href="{{ url_for('delete_entry', task_id = task.task_id) }}">Delete</a>  -
+              <a href="{{ url_for('complete', task_id = task.task_id) }}">Mark as Complete</a>
+            {% else %}
+              <span>N/A</span>
+            {% endif %}
           </td>
         </tr>
       {% endfor %}
@@ -92,13 +96,17 @@
       </thead>
       {% for task in closed_tasks %}
         <tr>
-          <td width="200px">{{ task.name }}</td>
-          <td width="75px">{{ task.due_date }}</td>
-          <td width="100px">{{ task.posted_date }}</td>
-          <td width="50px">{{ task.priority }}</td>
-          <td width="90px">{{ task.poster.name }}</td>
+          <td>{{ task.name }}</td>
+          <td>{{ task.due_date }}</td>
+          <td>{{ task.posted_date }}</td>
+          <td>{{ task.priority }}</td>
+          <td>{{ task.poster.name }}</td>
           <td>
+            {% if task.poster.name == session.name or session.role == "admin" %}
              <a href="{{ url_for('delete_entry', task_id = task.task_id) }}">Delete</a>
+            {% else %}
+              <span>N/A</span>
+            {% endif %}
           </td>
         </tr>
       {% endfor %}

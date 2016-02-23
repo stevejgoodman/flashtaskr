@@ -6,11 +6,14 @@ from flask import Flask, flash, redirect, render_template, request, \
 from forms import AddTaskForm, LoginForm, RegisterForm
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy.exc import IntegrityError
+from flask.ext.bcrypt import Bcrypt
+
 
 # Config
 app = Flask(__name__)
 app.config.from_object('_config')
 db = SQLAlchemy(app)
+bcrypt = Bcrypt(app)
 
 # *** I don't like this - line has to be after db =SQL.. otherwise fails!!!
 from models import Task, User
@@ -34,6 +37,29 @@ def closed_tasks():
     return db.session.query(Task).filter_by(status='0').order_by(Task.due_date.asc())
 
 
+@app.errorhandler(404)
+def not_found(error):
+    if app.debug is not True:
+        now = datetime.now()
+        r = request.url
+        with open('error.log', 'a') as f:
+            current_timestamp = now.strftime("%d-%m-%Y %H:%D:%M:%S")
+            f.write("\x§x§n404 error at {}: {}".format(current_timestamp, r))
+    return render_template('404.html'), 404
+
+
+@app.errorhandler(500)
+def internal_error(error):
+    db.session.rollback()
+    if app.debug is not True:
+        now = datetime.now()
+        r = request.url
+        with open('error.log', 'a') as f:
+            current_timestamp = now.strftime("%d-%m-%Y %H:%D:%M:%S")
+            f.write("\n500 error at {}: {}".format(current_timestamp, r))
+    return render_template('500.html'), 500
+
+
 @app.route('/register/', methods=['GET', 'POST'])
 def register():
     error = None
@@ -44,7 +70,7 @@ def register():
             new_user = User(
                 form.name.data,
                 form.email.data,
-                form.password.data,
+                bcrypt.generate_password_hash(form.password.data)
             )
             try:
                 db.session.add(new_user)
@@ -75,6 +101,7 @@ def logout():
     session.pop('logged_in', None)
     session.pop('user_id', None)
     session.pop('role', None)
+    session.pop('name', None)
     flash('Goodbye')
     return redirect(url_for('login'))
 
@@ -98,10 +125,11 @@ def login():
     if request.method == 'POST':
         if form.validate_on_submit():
             user = User.query.filter_by(name=request.form['name']).first()
-            if user is not None and user.password == request.form['password']:
+            if user is not None and bcrypt.check_password_hash(user.password, request.form['password']):
                 session['logged_in'] = True
                 session['user_id'] = user.id
                 session['role'] = user.role
+                session['name'] = user.name
                 flash('Welcome')
                 return redirect(url_for('tasks'))
             else:
@@ -136,7 +164,8 @@ def tasks():
         'tasks.html',
         form=AddTaskForm(request.form),
         open_tasks=open_tasks(),
-        closed_tasks=closed_tasks()
+        closed_tasks=closed_tasks(),
+        username=session['name']
     )
 
 

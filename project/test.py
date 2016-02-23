@@ -5,6 +5,9 @@ from views import app, db
 from _config import basedir
 from models import User
 
+from views import bcrypt
+
+
 TEST_DB = 'test.db'
 
 
@@ -95,7 +98,7 @@ class AllTests(unittest.TestCase):
         self.assertNotIn(b'Goodbye', response.data)
 
     def create_user(self, name, email, password):
-        new_user = User(name=name, email=email, password=password)
+        new_user = User(name=name, email=email, password=bcrypt.generate_password_hash(password))
         db.session.add(new_user)
         db.session.commit()
 
@@ -165,9 +168,9 @@ class AllTests(unittest.TestCase):
 
     def create_admin_user(self):
         new_user = User(
-            name='admin',
+            name='administrator',
             email='admin@admin.com',
-            password='admin',
+            password=bcrypt.generate_password_hash('administrator'),
             role='admin'
         )
         db.session.add(new_user)
@@ -196,6 +199,55 @@ class AllTests(unittest.TestCase):
         self.app.get('tasks/', follow_redirects=True)
         response = self.app.get("delete/1/", follow_redirects=True)
         self.assertNotIn(b'You can only delete tasks that belong to you', response.data)
+
+    def test_task_template_displays_logged_in_username(self):
+        self.register('fletcher', 'fletcher@realpytgon.com',
+                      'python101', 'python101')
+        self.login('fletcher', 'python101')
+        response = self.app.get('tasks/', follow_redirects=True)
+        self.assertIn(b'fletcher', response.data)
+
+    def test_users_cannot_see_links_they_cant_modify(self):
+        self.register('michael', 'michael@realpython.com', 'python', 'python')
+        self.login('michael', 'python')
+        self.app.get('tasks/', follow_redirects=True)
+        self.create_task()
+        self.logout()
+        self.register('fletcher', 'fletcher@realpytgon.com',
+                      'python101', 'python101')
+        response = self.login('fletcher', 'python101')
+        self.app.get('tasks/', follow_redirects=True)
+        self.assertNotIn(b'complete', response.data)
+        self.assertNotIn(b'delete entry', response.data)
+
+    def test_users_can_see_links_for_tasks_they_created(self):
+        self.register('michael', 'michael@realpython.com', 'python', 'python')
+        self.login('michael', 'python')
+        self.app.get('tasks/', follow_redirects=True)
+        self.create_task()
+        self.logout()
+        self.register('fletcher', 'fletcher@realpytgon.com',
+                      'python101', 'python101')
+        self.login('fletcher', 'python101')
+        self.app.get('tasks/', follow_redirects=True)
+        response = self.create_task()
+        self.assertIn(b'complete/2/', response.data)
+        self.assertIn(b'complete/2/', response.data)
+
+    def test_admin_users_can_see_links_all_tasks(self):
+        self.register('michael', 'michael@realpython.com', 'python', 'python')
+        self.login('michael', 'python')
+        self.app.get('tasks/', follow_redirects=True)
+        self.create_task()
+        self.logout()
+        self.create_admin_user()
+        self.login('administrator', 'administrator')
+        self.app.get('tasks/', follow_redirects=True)
+        response = self.create_task()
+        self.assertIn(b'complete/1/', response.data)
+        self.assertIn(b'delete/1/', response.data)
+        self.assertIn(b'complete/2/', response.data)
+        self.assertIn(b'delete/2/', response.data)
 
 
 if __name__ == '__main__':
